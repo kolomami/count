@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบคำนวณคะแนนและรางวัลกิจกรรมเกม</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Sarabun', sans-serif; }
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { 
+            -webkit-appearance: none; 
+            margin: 0; 
+        }
+        input[type=number] { -moz-appearance: textfield; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen p-2 sm:p-4 md:p-8 text-slate-800">
+
+    <div class="max-w-3xl mx-auto bg-white rounded-2xl shadow-xl p-4 sm:p-6 border border-slate-100">
+        <h1 class="text-2xl md:text-3xl font-extrabold text-center text-indigo-600 mb-6 flex items-center justify-center gap-2">
+            🎮 เครื่องคำนวณคะแนนกิจกรรมเกม
+        </h1>
+        
+        <div class="flex border-b border-slate-200 mb-6 bg-slate-100 rounded-xl p-1">
+            <button id="tabMode1" onclick="switchMode('direct')" 
+                    class="flex-1 py-3 text-center font-bold text-sm sm:text-base rounded-lg text-indigo-600 bg-white shadow-xs transition-all duration-200 cursor-pointer">
+                🏆 โหมด 1: คะแนนสะสมเดี่ยว (คิดแต้มลบได้)
+            </button>
+            <button id="tabMode2" onclick="switchMode('match')" 
+                    class="flex-1 py-3 text-center font-bold text-sm sm:text-base rounded-lg text-slate-500 hover:text-slate-700 transition-all duration-200 cursor-pointer">
+                ⚔️ โหมด 2: คะแนนรวมกลุ่ม (Challenge)
+            </button>
+        </div>
+        
+        <div id="settingsContainer" class="bg-indigo-50/70 p-4 rounded-xl mb-6 border border-indigo-100">
+            <label id="rateLabel" class="block text-sm font-bold text-slate-700 mb-2">💰 อัตรามูลค่าของรางวัล ต่อ 1 คะแนน (บาท):</label>
+            <input type="number" id="rateInput" value="10" min="0" oninput="calculateAll()" 
+                   class="w-full p-3 border-2 border-slate-200 rounded-xl text-xl font-black text-indigo-700 bg-white focus:outline-none focus:border-indigo-500">
+        </div>
+
+        <div class="mb-6">
+            <label class="block text-sm font-bold text-slate-700 mb-2">👤 รายชื่อผู้เข้าแข่งขัน:</label>
+            <div class="flex gap-2">
+                <input type="text" id="playerNameInput" placeholder="ระบุชื่อผู้เล่นหรือชื่อทีม..." 
+                       class="flex-1 p-3 text-base border-2 border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500">
+                <button onclick="addPlayer()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 py-3 rounded-xl transition duration-200 shadow-xs cursor-pointer">
+                    เพิ่ม
+                </button>
+            </div>
+        </div>
+
+        <div id="distributionSettings" class="hidden bg-sky-50 p-4 rounded-xl mb-6 border-2 border-sky-100">
+            <label class="block text-sm font-bold text-sky-900 mb-2">📌 วิธีการจัดสรรและมอบรางวัล (โหมดที่ 2):</label>
+            <div class="grid grid-cols-1 gap-3">
+                <select id="distStyleSelect" onchange="calculateAll()" class="w-full p-3 border-2 border-sky-200 rounded-xl bg-white text-sm sm:text-base font-bold text-slate-700 focus:outline-none focus:border-sky-400">
+                    <option value="max_winner">🥇 ให้ผู้มีคะแนนสูงสุดเป็นศูนย์กลางการกระจายรางวัล</option>
+                    <option value="custom_collector">🏦 กำหนดผู้ดูแลกองกลางเพื่อรวบรวมและกระจายส่วนต่างรางวัล</option>
+                </select>
+                <div id="customCollectorWrapper" class="hidden">
+                    <select id="collectorSelect" onchange="calculateAll()" class="w-full p-3 border-2 border-sky-300 rounded-xl bg-white text-base font-black text-indigo-600 focus:outline-none focus:border-indigo-500">
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <hr class="border-slate-200 mb-6">
+
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-4">
+            <h2 class="text-lg sm:text-xl font-extrabold text-slate-800">📊 ตารางสรุปอันดับและผลคะแนน</h2>
+            <div id="infoBadge" class="text-xs bg-indigo-100 text-indigo-800 px-3 py-1.5 rounded-full font-bold"></div>
+        </div>
+
+        <div class="overflow-x-auto -mx-4 sm:mx-0">
+            <div class="inline-block min-w-full align-middle p-4 sm:p-0">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="border-b border-slate-200 text-slate-500 text-sm bg-slate-50">
+                            <th class="p-3 font-bold">ผู้เล่น / ทีม</th>
+                            <th class="p-3 text-center font-bold" style="min-width: 240px;" id="thScoreTitle">คะแนนสะสม</th>
+                            <th class="p-3 text-right font-bold" id="thFinal">มูลค่ารวม (บาท)</th>
+                            <th class="p-3 text-center font-bold">จัดการ</th>
+                        </tr>
+                    </thead>
+                    <tbody id="playerTableBody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="summaryPanel" class="mt-6 p-4 bg-slate-50 rounded-xl border-2 border-slate-100 flex flex-col gap-4 text-base font-bold">
+        </div>
+    </div>
+
+    <script>
+        // แยกฐานข้อมูลผู้เล่นและคะแนนออกจากกันเด็ดขาด
+        let mode1Players = [
+            { name: "ผู้เล่น A", score: 0 },
+            { name: "ผู้เล่น B", score: 0 },
+            { name: "ผู้เล่น C", score: 0 },
+            { name: "ผู้เล่น D", score: 0 }
+        ];
+
+        let mode2Players = [
+            { name: "ผู้เล่น A", score: 0 },
+            { name: "ผู้เล่น B", score: 0 },
+            { name: "ผู้เล่น C", score: 0 },
+            { name: "ผู้เล่น D", score: 0 }
+        ];
+
+        let currentMode = 'direct'; 
+
+        // ฟังก์ชันดึงชุดข้อมูลตามโหมดปัจจุบัน
+        function getActivePlayers() {
+            return currentMode === 'direct' ? mode1Players : mode2Players;
+        }
+
+        function switchMode(mode) {
+            currentMode = mode;
+            const tab1 = document.getElementById('tabMode1');
+            const tab2 = document.getElementById('tabMode2');
+            const distributionSettings = document.getElementById('distributionSettings');
+            const rateLabel = document.getElementById('rateLabel');
+
+            if (mode === 'direct') {
+                tab1.className = "flex-1 py-3 text-center font-bold text-sm sm:text-base rounded-lg text-indigo-600 bg-white shadow-xs transition-all duration-200 cursor-pointer";
+                tab2.className = "flex-1 py-3 text-center font-bold text-sm sm:text-base rounded-lg text-slate-500 hover:text-slate-700 transition-all duration-200 cursor-pointer";
+                distributionSettings.classList.add('hidden');
+                rateLabel.innerText = "💰 อัตรามูลค่าของรางวัล ต่อ 1 คะแนน (บาท):";
+            } else {
+                tab1.className = "flex-1 py-3 text-center font-bold text-sm sm:text-base rounded-lg text-slate-500 hover:text-slate-700 transition-all duration-200 cursor-pointer";
+                tab2.className = "flex-1 py-3 text-center font-bold text-sm sm:text-base rounded-lg text-indigo-600 bg-white shadow-xs transition-all duration-200 cursor-pointer";
+                distributionSettings.classList.remove('hidden');
+                rateLabel.innerText = "💰 อัตรามูลค่าส่วนต่างคะแนนกิจกรรม (บาท):";
+            }
+            updateCollectorDropdown();
+            calculateAll();
+        }
+
+        function addPlayer() {
+            const nameInput = document.getElementById('playerNameInput');
+            const name = nameInput.value.trim();
+            if (name === '') return alert('กรุณาระบุชื่อผู้เล่นหรือทีม');
+            
+            // เพิ่มรายชื่อเข้าไปในทั้งสองโหมดเพื่อความสะดวก (แต่เริ่มต้นแต้มเป็น 0 แยกกัน)
+            mode1Players.push({ name: name, score: 0 });
+            mode2Players.push({ name: name, score: 0 });
+            
+            nameInput.value = '';
+            updateCollectorDropdown();
+            calculateAll();
+        }
+
+        function deletePlayer(index) {
+            // ลบรายชื่อเฉพาะโหมดปัจจุบันที่เปิดอยู่
+            if (currentMode === 'direct') {
+                mode1Players.splice(index, 1);
+            } else {
+                mode2Players.splice(index, 1);
+            }
+            updateCollectorDropdown();
+            calculateAll();
+        }
+
+        function updateScore(index, value) {
+            let activePlayers = getActivePlayers();
+            activePlayers[index].score = parseFloat(value) || 0;
+            calculateAll();
+        }
+
+        function changeScoreBtn(index, amount) {
+            let activePlayers = getActivePlayers();
+            activePlayers[index].score = activePlayers[index].score + amount;
+            calculateAll();
+        }
+
+        function updateCollectorDropdown() {
+            const select = document.getElementById('collectorSelect');
+            const savedValue = select.value;
+            select.innerHTML = '';
+            
+            let activePlayers = getActivePlayers();
+            activePlayers.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.name;
+                opt.innerText = `🏦 ผู้ดูแลกองกลาง: ${p.name}`;
+                select.appendChild(opt);
+            });
+            if (activePlayers.some(p => p.name === savedValue)) {
+                select.value = savedValue;
+            }
+        }
+
+        function calculateAll() {
+            const tbody = document.getElementById('playerTableBody');
+            tbody.innerHTML = '';
+
+            const thScoreTitle = document.getElementById('thScoreTitle');
+            const thFinal = document.getElementById('thFinal');
+            const summaryPanel = document.getElementById('summaryPanel');
+            const infoBadge = document.getElementById('infoBadge');
+            const distStyle = document.getElementById('distStyleSelect').value;
+            const customCollectorWrapper = document.getElementById('customCollectorWrapper');
+
+            let activePlayers = getActivePlayers();
+
+            if (distStyle === 'custom_collector' && currentMode === 'match') {
+                customCollectorWrapper.classList.remove('hidden');
+            } else {
+                customCollectorWrapper.classList.add('hidden');
+            }
+
+            if (activePlayers.length === 0) {
+                summaryPanel.innerHTML = `<span class="text-slate-400">ยังไม่มีรายชื่อผู้ร่วมกิจกรรม</span>`;
+                infoBadge.innerText = '-';
+                return;
+            }
+
+            const rate = parseFloat(document.getElementById('rateInput').value) || 0;
+
+            if (currentMode === 'direct') {
+                thScoreTitle.innerText = "คะแนนสะสม";
+                thFinal.innerText = "มูลค่ารางวัลสะสม (บาท)";
+                infoBadge.innerText = "โหมดคะแนนเดี่ยวสะสมรายบุคคล (คะแนนแยกอิสระ)";
+                infoBadge.className = "text-xs bg-emerald-100 text-emerald-800 px-3 py-1.5 rounded-full font-bold";
+
+                let grandTotalRaw = 0;
+
+                activePlayers.forEach((player, index) => {
+                    let playerMoney = player.score * rate;
+                    grandTotalRaw += playerMoney;
+
+                    let finalClass = "text-emerald-600";
+                    if (playerMoney < 0) {
+                        finalClass = "text-amber-600 bg-amber-50/50 px-3 py-1 rounded-xl border border-amber-200";
+                    } else if (playerMoney > 0) {
+                        finalClass = "text-emerald-600 bg-emerald-50/50 px-3 py-1 rounded-xl border border-emerald-200";
+                    } else {
+                        finalClass = "text-slate-400 px-3";
+                    }
+
+                    const row = document.createElement('tr');
+                    row.className = "border-b border-slate-100 hover:bg-slate-50/50 transition";
+                    row.innerHTML = `
+                        <td class="p-3 font-bold text-slate-800 text-base">${player.name}</td>
+                        <td class="p-2 text-center">
+                            <div class="flex items-center justify-center gap-1">
+                                <button onclick="changeScoreBtn(${index}, -1)" class="w-9 h-9 bg-slate-100 active:bg-slate-200 font-extrabold rounded-lg text-slate-600 text-sm shadow-2xs border border-slate-200 cursor-pointer">-1</button>
+                                <button onclick="changeScoreBtn(${index}, -0.5)" class="w-11 h-9 bg-amber-50 active:bg-amber-100 font-extrabold rounded-lg text-amber-700 text-xs shadow-2xs border border-amber-200 cursor-pointer">-0.5</button>
+                                
+                                <input type="number" step="0.5" value="${player.score}" oninput="updateScore(${index}, this.value)" 
+                                       class="w-12 h-9 border border-slate-300 font-bold text-slate-900 rounded-lg text-center text-base focus:outline-none focus:border-indigo-500 bg-white">
+                                
+                                <button onclick="changeScoreBtn(${index}, 0.5)" class="w-11 h-9 bg-indigo-50 active:bg-indigo-100 font-extrabold rounded-lg text-indigo-700 text-xs shadow-2xs border border-indigo-200 cursor-pointer">+0.5</button>
+                                <button onclick="changeScoreBtn(${index}, 1)" class="w-9 h-9 bg-indigo-600 active:bg-indigo-700 font-extrabold rounded-lg text-white text-sm shadow-2xs cursor-pointer">+1</button>
+                            </div>
+                        </td>
+                        <td class="p-3 text-right font-black text-lg"><span class="${finalClass}">${playerMoney.toLocaleString(undefined, {maximumFractionDigits: 2})}</span></td>
+                        <td class="p-3 text-center">
+                            <button onclick="deletePlayer(${index})" class="text-slate-400 hover:text-red-500 font-bold p-2 text-sm cursor-pointer">ลบ</button>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+
+                summaryPanel.innerHTML = `
+                    <div class="flex justify-between items-center p-1">
+                        <span class="text-slate-600 font-bold text-sm sm:text-base">🎁 มูลค่าของรางวัลสะสมสุทธิในรอบนี้:</span>
+                        <span class="text-xl sm:text-2xl ${grandTotalRaw >= 0 ? 'text-emerald-600' : 'text-amber-600'} font-black">${grandTotalRaw.toLocaleString()} บาท</span>
+                    </div>
+                `;
+
+            } else if (currentMode === 'match') {
+                thScoreTitle.innerText = "จำนวนแมตช์ที่ชนะ";
+                thFinal.innerText = "ส่วนต่างแต้มสะสม (บาท)";
+                infoBadge.innerText = "โหมดคิดคำนวณส่วนต่างคะแนนกลุ่ม (คะแนนแยกอิสระ)";
+                infoBadge.className = "text-xs bg-sky-100 text-sky-800 px-3 py-1.5 rounded-full font-bold";
+
+                activePlayers.forEach(p => p.netResult = 0);
+
+                for (let i = 0; i < activePlayers.length; i++) {
+                    for (let j = 0; j < activePlayers.length; j++) {
+                        if (i !== j) {
+                            let cash = activePlayers[i].score * rate;
+                            activePlayers[i].netResult += cash;
+                            activePlayers[j].netResult -= cash;
+                        }
+                    }
+                }
+
+                let maxWinner = activePlayers[0];
+                activePlayers.forEach(p => {
+                    if (p.netResult > maxWinner.netResult) maxWinner = p;
+                });
+
+                let collectorName = "";
+                if (distStyle === 'max_winner') {
+                    collectorName = maxWinner.netResult > 0 ? maxWinner.name : activePlayers[0].name;
+                } else {
+                    collectorName = document.getElementById('collectorSelect').value || activePlayers[0].name;
+                }
+
+                activePlayers.forEach((player, index) => {
+                    let resultText = "";
+                    let resultClass = "";
+
+                    if (player.netResult > 0) {
+                        resultText = `+${player.netResult.toLocaleString(undefined, {maximumFractionDigits:2})}`;
+                        resultClass = "text-green-600 font-black bg-green-50/50 px-3 py-1 rounded-xl block text-right text-base sm:text-lg border border-green-200";
+                    } else if (player.netResult < 0) {
+                        resultText = `${player.netResult.toLocaleString(undefined, {maximumFractionDigits:2})}`;
+                        resultClass = "text-amber-600 font-black bg-amber-50/50 px-3 py-1 rounded-xl block text-right text-base sm:text-lg border border-amber-200";
+                    } else {
+                        resultText = "0";
+                        resultClass = "text-slate-400 font-bold block text-right px-3";
+                    }
+
+                    const isCollector = player.name === collectorName;
+
+                    const row = document.createElement('tr');
+                    row.className = `border-b border-slate-100 hover:bg-slate-50/50 transition ${isCollector ? 'bg-sky-50/50 border-l-4 border-l-sky-400' : ''}`;
+                    row.innerHTML = `
+                        <td class="p-3">
+                            <div class="font-extrabold text-slate-800 text-base flex flex-col sm:flex-row sm:items-center gap-1">
+                                ${player.name}
+                                ${isCollector ? '<span class="text-[10px] sm:text-xs bg-sky-500 text-white px-2 py-0.5 rounded-md font-bold w-max">ผู้ดูแลกองกลาง</span>' : ''}
+                            </div>
+                        </td>
+                        <td class="p-2 text-center">
+                            <div class="flex justify-center items-center gap-1.5">
+                                <button onclick="changeScoreBtn(${index}, -1)" class="w-10 h-10 rounded-xl bg-slate-100 active:bg-slate-200 font-black text-slate-600 text-lg border border-slate-200 cursor-pointer">-</button>
+                                <input type="number" value="${player.score}" oninput="updateScore(${index}, this.value)" 
+                                       class="w-12 h-10 border border-slate-300 font-bold text-slate-900 rounded-xl text-center text-lg bg-white">
+                                <button onclick="changeScoreBtn(${index}, 1)" class="w-10 h-10 rounded-xl bg-indigo-50 active:bg-indigo-100 font-black text-indigo-700 text-lg border border-indigo-200 cursor-pointer">+</button>
+                            </div>
+                        </td>
+                        <td class="p-3 text-right"><span class="${resultClass}">${resultText}</span></td>
+                        <td class="p-3 text-center">
+                            <button onclick="deletePlayer(${index})" class="text-slate-400 hover:text-red-500 font-bold p-2 text-sm cursor-pointer">ลบ</button>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+
+                let collectSection = [];
+                let payOutSection = [];
+
+                activePlayers.forEach(p => {
+                    if (p.name !== collectorName) {
+                        if (p.netResult < 0) {
+                            collectSection.push({ from: p.name, amount: Math.abs(p.netResult) });
+                        } else if (p.netResult > 0) {
+                            payOutSection.push({ to: p.name, amount: p.netResult });
+                        }
+                    }
+                });
+
+                let summaryHtml = `<div class="w-full text-slate-800">
+                    <h3 class="text-base sm:text-lg font-black text-sky-700 mb-4 border-b-2 border-sky-100 pb-2 flex items-center gap-1">
+                        📋 บิลสรุปเส้นทางการจัดสรรรางวัลกิจกรรม (ผู้ดูแลกองกลาง: ${collectorName})
+                    </h3>`;
+
+                summaryHtml += `<div class="grid grid-cols-1 md:grid-cols-2 gap-5">`;
+
+                summaryHtml += `<div>
+                    <h4 class="text-xs sm:text-sm font-black text-amber-600 uppercase tracking-wider mb-2">📥 ขั้นตอนที่ 1: สมาชิกที่แต้มตามเกณฑ์เฉลี่ยสมทบเข้ากองกลาง (${collectorName})</h4>
+                    <ul class="space-y-2 text-sm font-bold">`;
+                if (collectSection.length === 0) {
+                    summaryHtml += `<li class="text-sm text-slate-400 font-normal py-2 bg-white rounded-xl text-center border">ไม่มีรายการสมทบคะแนนเพิ่ม</li>`;
+                } else {
+                    collectSection.forEach(c => {
+                        summaryHtml += `
+                            <li class="flex items-center gap-2 bg-white p-3 rounded-xl border border-slate-100 shadow-2xs">
+                                <span class="text-amber-600 font-extrabold">🔶 ${c.from}</span>
+                                <span class="text-slate-400 text-xs font-normal">สมทบเข้าสู่ส่วนกลาง</span>
+                                <span class="ml-auto font-black text-slate-900">${c.amount.toLocaleString(undefined, {maximumFractionDigits:2})} บาท</span>
+                            </li>`;
+                    });
+                }
+                summaryHtml += `</ul></div>`;
+
+                summaryHtml += `<div>
+                    <h4 class="text-xs sm:text-sm font-black text-green-600 uppercase tracking-wider mb-2">📤 ขั้นตอนที่ 2: (${collectorName}) ดำเนินการกระจายรางวัลต่อให้ผู้ทำคะแนนนำ</h4>
+                    <ul class="space-y-2 text-sm font-bold">`;
+                if (payOutSection.length === 0) {
+                    summaryHtml += `<li class="text-sm text-slate-400 font-normal py-2 bg-white rounded-xl text-center border">ไม่มีรายการที่ต้องกระจายของรางวัลเพิ่ม</li>`;
+                } else {
+                    payOutSection.forEach(p => {
+                        summaryHtml += `
+                            <li class="flex items-center gap-2 bg-white p-3 rounded-xl border border-slate-100 shadow-2xs">
+                                <span class="text-sky-600 font-extrabold">🏦 จากส่วนกลาง</span>
+                                <span class="text-slate-400 text-xs font-normal">จัดสรรส่งต่อให้</span>
+                                <span class="text-green-600 font-extrabold">🟢 ${p.to}</span>
+                                <span class="ml-auto font-black text-slate-900">${p.amount.toLocaleString(undefined, {maximumFractionDigits:2})} บาท</span>
+                            </li>`;
+                    });
+                }
+                summaryHtml += `</ul></div></div></div>`;
+
+                summaryPanel.innerHTML = summaryHtml;
+            }
+        }
+
+        updateCollectorDropdown();
+        calculateAll();
+    </script>
+</body>
+</html>
